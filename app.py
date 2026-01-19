@@ -1,9 +1,13 @@
 import sqlite3
 import streamlit as st
 import pandas as pd
-from utils import get_exchange_rates, convert_currency, get_currency_symbol, get_popular_currencies
+from utils import (
+    get_exchange_rates,
+    convert_currency,
+    get_currency_symbol,
+    get_popular_currencies,
+)
 
-# Initialize database and create table if it doesn't exist
 # This creates a local SQLite database to store all expense data
 conn = sqlite3.connect("database.db")
 cursor = conn.cursor()
@@ -30,16 +34,18 @@ st.markdown("*Track your expenses with multi-currency support*")
 st.sidebar.header("Currency Settings")
 currencies = get_popular_currencies()
 selected_currency = st.sidebar.selectbox(
-    "Select Currency", 
-    currencies, 
+    "Select Currency",
+    currencies,
     index=0,  # Default to USD
-    help="Choose your preferred currency for display"
+    help="Choose your preferred currency for display",
 )
+
 
 # Fetch exchange rates (cached for performance)
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def fetch_rates():
     return get_exchange_rates()
+
 
 exchange_rates = fetch_rates()
 currency_symbol = get_currency_symbol(selected_currency)
@@ -62,25 +68,38 @@ col1, col2 = st.columns(2)
 with col1:
     date = st.date_input("Date", help="Select the date of your expense")
     amount = st.number_input(
-        f"Amount ({currency_symbol})", 
-        min_value=0.0, 
+        f"Amount ({currency_symbol})",
+        min_value=0.0,
         step=0.01,
-        help=f"Enter amount in {selected_currency}"
+        help=f"Enter amount in {selected_currency}",
     )
 
 with col2:
     category = st.selectbox(
-        "Category", 
-        ["Food", "Transport", "Rent", "Bills", "Entertainment", "Shopping", "Healthcare", "Other"],
-        help="Choose the expense category"
+        "Category",
+        [
+            "Food",
+            "Transport",
+            "Rent",
+            "Bills",
+            "Entertainment",
+            "Shopping",
+            "Healthcare",
+            "Other",
+        ],
+        help="Choose the expense category",
     )
     note = st.text_input("Note (Optional)", help="Add any additional details")
 
 if st.button("➕ Add Expense", type="primary"):
     if amount > 0:
         # Insert expense into database (always store in USD for consistency)
-        usd_amount = convert_currency(amount, selected_currency, "USD", exchange_rates) if exchange_rates else amount
-        
+        usd_amount = (
+            convert_currency(amount, selected_currency, "USD", exchange_rates)
+            if exchange_rates
+            else amount
+        )
+
         conn = sqlite3.connect("database.db")
         cursor = conn.cursor()
         cursor.execute(
@@ -104,49 +123,53 @@ conn.close()
 if not df.empty:
     # Convert amounts to selected currency for display
     if exchange_rates and selected_currency != "USD":
-        df['display_amount'] = df['amount'].apply(
+        df["display_amount"] = df["amount"].apply(
             lambda x: convert_currency(x, "USD", selected_currency, exchange_rates)
         )
     else:
-        df['display_amount'] = df['amount']
-    
+        df["display_amount"] = df["amount"]
+
     # Format the display
-    df['Amount'] = df['display_amount'].apply(lambda x: f"{currency_symbol}{x:.2f}")
-    display_df = df[['date', 'Amount', 'category', 'note']].rename(columns={
-        'date': 'Date', 'category': 'Category', 'note': 'Note'
-    })
-    st.dataframe(display_df, width='stretch')
+    df["Amount"] = df["display_amount"].apply(lambda x: f"{currency_symbol}{x:.2f}")
+    display_df = df[["date", "Amount", "category", "note"]].rename(
+        columns={"date": "Date", "category": "Category", "note": "Note"}
+    )
+    st.dataframe(display_df, width="stretch")
 else:
     st.info("No expenses recorded yet. Add your first expense above!")
 
 # Section: Spending summary and budget tracking
 if not df.empty:
     st.header("💳 Financial Summary")
-    
+
     # Convert total to selected currency
     total_usd = df["amount"].sum()
-    total_display = convert_currency(total_usd, "USD", selected_currency, exchange_rates) if exchange_rates else total_usd
-    
+    total_display = (
+        convert_currency(total_usd, "USD", selected_currency, exchange_rates)
+        if exchange_rates
+        else total_usd
+    )
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.metric("Total Spent", f"{currency_symbol}{total_display:.2f}")
-        
+
         # Budget tracking
         budget = st.number_input(
-            f"Monthly Budget ({currency_symbol})", 
-            min_value=0.0, 
+            f"Monthly Budget ({currency_symbol})",
+            min_value=0.0,
             step=10.0,
-            help="Set your monthly spending limit"
+            help="Set your monthly spending limit",
         )
-        
+
         if budget > 0:
             remaining = budget - total_display
             if remaining < 0:
                 st.error(f"⚠️ Over budget by {currency_symbol}{abs(remaining):.2f}")
             else:
                 st.success(f"✅ {currency_symbol}{remaining:.2f} remaining")
-    
+
     with col2:
         # Category breakdown
         category_summary = df.groupby("category")["amount"].sum()
@@ -154,11 +177,11 @@ if not df.empty:
             category_summary = category_summary.apply(
                 lambda x: convert_currency(x, "USD", selected_currency, exchange_rates)
             )
-        
+
         st.subheader("By Category")
         for cat, amount in category_summary.items():
             st.write(f"**{cat}**: {currency_symbol}{amount:.2f}")
-    
+
     # Visualization
     st.header("📈 Spending Chart")
     st.bar_chart(category_summary)
